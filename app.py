@@ -80,7 +80,7 @@ def memcache():
 
 def try_login(account_name, password):
     cur = db().cursor()
-    cur.execute("SELECT * FROM users WHERE account_name = %s AND del_flg = 0", (account_name,))
+    cur.execute("SELECT id, account_name, passhash FROM users WHERE account_name = %s AND del_flg = 0", (account_name,))
     user = cur.fetchone()
 
     if user and calculate_passhash(user["account_name"], password) == user["passhash"]:
@@ -125,7 +125,7 @@ def make_posts(results, all_comments=False):
     posts = []
     cursor = db().cursor()
     for post in results:
-        cursor.execute("SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = %s",
+        cursor.execute("SELECT COUNT(id) AS `count` FROM `comments` WHERE `post_id` = %s",
                        (post['id'],))
         post['comment_count'] = cursor.fetchone()['count']
 
@@ -282,7 +282,7 @@ def get_user_list(account_name):
                    (user['id'],))
     posts = make_posts(cursor.fetchall())
 
-    cursor.execute('SELECT COUNT(*) AS count FROM `comments` WHERE `user_id` = %s', (user['id'],))
+    cursor.execute('SELECT COUNT(id) AS count FROM `comments` WHERE `user_id` = %s', (user['id'],))
     comment_count = cursor.fetchone()['count']
 
     cursor.execute('SELECT `id` FROM `posts` WHERE `user_id` = %s', (user['id'],))
@@ -291,7 +291,7 @@ def get_user_list(account_name):
 
     commented_count = 0
     if post_count > 0:
-        cursor.execute("SELECT COUNT(*) AS count FROM `comments` WHERE `post_id` IN %s", (post_ids,))
+        cursor.execute("SELECT COUNT(id) AS count FROM `comments` WHERE `post_id` IN %s", (post_ids,))
         commented_count = cursor.fetchone()['count']
 
     me = get_session_user()
@@ -388,7 +388,7 @@ def get_image(id, ext):
         return ""
 
     cursor = db().cursor()
-    cursor.execute('SELECT * FROM `posts` WHERE `id` = %s', (id,))
+    cursor.execute('SELECT mime, imgdata FROM `posts` WHERE `id` = %s', (id,))
     post = cursor.fetchone()
 
     mime = post['mime']
