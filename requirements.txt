@@ -3,3 +3,4 @@ mysqlclient
 pymemcache
 flake8
 gunicorn
+newrelic

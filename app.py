@@ -13,6 +13,9 @@ import MySQLdb.cursors
 from pymemcache.client.base import Client as MemcacheClient
 
 import pymc_session
+import newrelic.agent
+
+newrelic.agent.initialize('/home/isucon/newrelic.ini')
 
 
 UPLOAD_LIMIT = 10 * 1024 * 1024  # 10mb
