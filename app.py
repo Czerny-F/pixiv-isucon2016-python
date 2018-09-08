@@ -1,7 +1,6 @@
 import datetime
 import os
 import re
-import pathlib
 import subprocess
 import tempfile
 
@@ -155,8 +154,7 @@ def make_posts(results, all_comments=False):
 
 # app setup
 
-static_path = pathlib.Path(__file__).resolve().parent.parent / 'public'
-app = flask.Flask(__name__, static_folder=str(static_path), static_url_path='')
+app = flask.Flask(__name__)
 # app.debug = True
 app.logger.setLevel(20)
 app.session_interface = pymc_session.SessionInterface(memcache())
