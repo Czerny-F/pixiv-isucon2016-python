@@ -112,11 +112,29 @@ def calculate_passhash(account_name: str, password: str):
     return digest("%s:%s" % (password, calculate_salt(account_name)))
 
 
+def get_session_auth():
+    user = flask.session.get('user')
+    if user:
+        cur = db().cursor()
+        cur.execute("SELECT 1 FROM `users` WHERE `id` = %s", (user['id'],))
+        return bool(cur.fetchone())
+    return False
+
+
 def get_session_user():
     user = flask.session.get('user')
     if user:
         cur = db().cursor()
-        cur.execute("SELECT * FROM `users` WHERE `id` = %s", (user['id'],))
+        cur.execute("SELECT account_name FROM `users` WHERE `id` = %s", (user['id'],))
+        return cur.fetchone()
+    return None
+
+
+def get_session_perm():
+    user = flask.session.get('user')
+    if user:
+        cur = db().cursor()
+        cur.execute("SELECT id, account_name, authority FROM `users` WHERE `id` = %s", (user['id'],))
         return cur.fetchone()
     return None
 
@@ -197,14 +215,14 @@ def get_initialize():
 
 @app.route('/login')
 def get_login():
-    if get_session_user():
+    if get_session_auth():
         return flask.redirect('/')
     return flask.render_template("login.html", me=None)
 
 
 @app.route('/login', methods=['POST'])
 def post_login():
-    if get_session_user():
+    if get_session_auth():
         return flask.redirect('/')
 
     user = try_login(flask.request.form['account_name'], flask.request.form['password'])
@@ -219,14 +237,14 @@ def post_login():
 
 @app.route('/register')
 def get_register():
-    if get_session_user():
+    if get_session_auth():
         return flask.redirect('/')
     return flask.render_template("register.html", me=None)
 
 
 @app.route('/register', methods=['POST'])
 def post_register():
-    if get_session_user():
+    if get_session_auth():
         return flask.redirect('/')
 
     account_name = flask.request.form['account_name']
@@ -258,13 +276,11 @@ def get_logout():
 
 @app.route('/')
 def get_index():
-    me = get_session_user()
-
     cursor = db().cursor()
     cursor.execute('SELECT `id`, `user_id`, `body`, `created_at`, `mime` FROM `posts` ORDER BY `created_at` DESC')
     posts = make_posts(cursor.fetchall())
 
-    return flask.render_template("index.html", posts=posts, me=me)
+    return flask.render_template("index.html", posts=posts, me=get_session_user())
 
 
 @app.route('/@<account_name>')
@@ -294,11 +310,9 @@ def get_user_list(account_name):
         cursor.execute("SELECT COUNT(id) AS count FROM `comments` WHERE `post_id` IN %s", (post_ids,))
         commented_count = cursor.fetchone()['count']
 
-    me = get_session_user()
-
     return flask.render_template("user.html",
                                  posts=posts, user=user, post_count=post_count,
-                                 comment_count=comment_count, me=me)
+                                 comment_count=comment_count, me=get_session_user())
 
 
 def _parse_iso8601(s):
@@ -337,13 +351,12 @@ def get_posts_id(id):
     if not posts:
         flask.abort(404)
 
-    me = get_session_user()
-    return flask.render_template("post.html", post=posts[0], me=me)
+    return flask.render_template("post.html", post=posts[0], me=get_session_user())
 
 
 @app.route('/', methods=['POST'])
 def post_index():
-    me = get_session_user()
+    me = get_session_perm()
     if not me:
         return flask.redirect('/login')
 
@@ -402,7 +415,7 @@ def get_image(id, ext):
 
 @app.route('/comment', methods=['POST'])
 def post_comment():
-    me = get_session_user()
+    me = get_session_perm()
     if not me:
         return flask.redirect('/login')
 
@@ -423,7 +436,7 @@ def post_comment():
 
 @app.route('/admin/banned')
 def get_banned():
-    me = get_session_user()
+    me = get_session_perm()
     if not me:
         flask.redirect('/login')
 
@@ -439,7 +452,7 @@ def get_banned():
 
 @app.route('/admin/banned', methods=['POST'])
 def post_banned():
-    me = get_session_user()
+    me = get_session_perm()
     if not me:
         flask.redirect('/login')
 
