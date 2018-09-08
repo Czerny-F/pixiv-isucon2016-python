@@ -6,7 +6,7 @@
     </a>
   </div>
   <div class="isu-post-image">
-    <img src="{{ image_url(post) }}" class="isu-image">
+    <img src="{{ post.image }}" class="isu-image">
   </div>
   <div class="isu-post-text">
     <a href="/@{{ post['user']['account_name'] | urlencode }}" class="isu-post-account-name">{{ post.user.account_name }}</a>

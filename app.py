@@ -17,9 +17,17 @@ import newrelic.agent
 newrelic.agent.initialize('/home/isucon/newrelic.ini')
 
 
+UPLOAD_DIR = '/home/isucon/private_isu/webapp/media'
 UPLOAD_LIMIT = 10 * 1024 * 1024  # 10mb
 POSTS_PER_PAGE = 20
 
+MEDIA_PATH = '/image/'
+
+EXTS = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/gif': 'gif',
+}
 
 _config = None
 
@@ -178,20 +186,6 @@ app.logger.setLevel(20)
 app.session_interface = pymc_session.SessionInterface(memcache())
 
 
-@app.template_global()
-def image_url(post):
-    ext = ""
-    mime = post['mime']
-    if mime == "image/jpeg":
-        ext = ".jpg"
-    elif mime == "image/png":
-        ext = ".png"
-    elif mime == "image/gif":
-        ext = ".gif"
-
-    return "/image/%s%s" % (post['id'], ext)
-
-
 _paragraph_re = re.compile(r'(?:\r\n|\r|\n){2,}')
 
 
@@ -277,7 +271,7 @@ def get_logout():
 @app.route('/')
 def get_index():
     cursor = db().cursor()
-    cursor.execute('SELECT `id`, `user_id`, `body`, `created_at`, `mime` FROM `posts` ORDER BY `created_at` DESC')
+    cursor.execute('SELECT `id`, `user_id`, `body`, `created_at`, `image` FROM `posts` ORDER BY `created_at` DESC')
     posts = make_posts(cursor.fetchall())
 
     return flask.render_template("index.html", posts=posts, me=get_session_user())
@@ -293,7 +287,7 @@ def get_user_list(account_name):
     if not user:
         flask.abort(404)  # raises exception
 
-    cursor.execute("SELECT `id`, `user_id`, `body`, `mime`, `created_at`"
+    cursor.execute("SELECT `id`, `user_id`, `body`, `image`, `created_at`"
                    " FROM `posts` WHERE `user_id` = %s ORDER BY `created_at` DESC",
                    (user['id'],))
     posts = make_posts(cursor.fetchall())
@@ -330,11 +324,11 @@ def get_posts():
     max_created_at = flask.request.args['max_created_at'] or None
     if max_created_at:
         max_created_at = _parse_iso8601(max_created_at)
-        cursor.execute('SELECT `id`, `user_id`, `body`, `mime`, `created_at`'
+        cursor.execute('SELECT `id`, `user_id`, `body`, `image`, `created_at`'
                        ' FROM `posts` WHERE `created_at` <= %s ORDER BY `created_at` DESC',
                        (max_created_at,))
     else:
-        cursor.execute('SELECT `id`, `user_id`, `body`, `mime`, `created_at`'
+        cursor.execute('SELECT `id`, `user_id`, `body`, `image`, `created_at`'
                        ' FROM `posts` WHERE ORDER BY `created_at` DESC')
 
     results = cursor.fetchall()
@@ -382,35 +376,21 @@ def post_index():
             flask.flash("ファイルサイズが大きすぎます")
             return flask.redirect('/')
 
-        tempf.seek(0)
-        imgdata = tempf.read()
+        file.seek(0)
 
-    query = 'INSERT INTO `posts` (`user_id`, `mime`, `imgdata`, `body`) VALUES (%s,%s,%s,%s)'
+    query = 'INSERT INTO `posts` (`user_id`, `image`, `body`) VALUES (%s,%s,%s)'
     cursor = db().cursor()
-    cursor.execute(query, (me['id'], mime, imgdata, flask.request.form.get('body')))
+    cursor.execute(query, (me['id'], '', flask.request.form.get('body')))
     pid = cursor.lastrowid
+
+    name = '%s.%s' % (pid, EXTS[mime])
+    fname = '%s/%s' % (UPLOAD_DIR, name)
+    file.save(fname)
+
+    url = '%s%s' % (MEDIA_PATH, name)
+    cursor.execute('UPDATE posts SET image = %s WHERE id = %s', (url, pid,))
+
     return flask.redirect("/posts/%d" % pid)
-
-
-@app.route('/image/<id>.<ext>')
-def get_image(id, ext):
-    if not id:
-        return ""
-    id = int(id)
-    if id == 0:
-        return ""
-
-    cursor = db().cursor()
-    cursor.execute('SELECT mime, imgdata FROM `posts` WHERE `id` = %s', (id,))
-    post = cursor.fetchone()
-
-    mime = post['mime']
-    if (ext == 'jpg' and mime == "image/jpeg"
-            or ext == 'png' and mime == "image/png"
-            or ext == 'gif' and mime == "image/gif"):
-        return flask.Response(post['imgdata'], mimetype=mime)
-
-    flask.abort(404)
 
 
 @app.route('/comment', methods=['POST'])
