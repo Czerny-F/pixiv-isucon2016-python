@@ -150,23 +150,33 @@ def get_session_perm():
 def make_posts(results, all_comments=False):
     posts = []
     cursor = db().cursor()
+
+    pids = [str(p['id']) for p in results]
+    cursor.execute('SELECT C.post_id, U.account_name as user, C.comment'
+                   ' FROM comments C'
+                   ' JOIN users U ON C.user_id = U.id'
+                   ' WHERE C.post_id IN (%s)'
+                   ' ORDER BY C.created_at ASC',
+                   (','.join(pids),))
+
+    cdict = {}
+    for c in cursor.fetchall():
+        pid = int(c['post_id'])
+        if pid in cdict:
+            cdict[pid].append(c)
+        else:
+            cdict[pid] = [c]
+
     for post in results:
-        cursor.execute("SELECT COUNT(id) AS `count` FROM `comments` WHERE `post_id` = %s",
-                       (post['id'],))
-        post['comment_count'] = cursor.fetchone()['count']
+        pid = int(post['id'])
+        comments = cdict.get(pid, [])
+        post['comment_count'] = len(comments)
+        if all_comments:
+            post['comments'] = comments
+        else:
+            post['comments'] = comments[:3]
 
-        query = 'SELECT * FROM `comments` WHERE `post_id` = %s ORDER BY `created_at` DESC'
-        if not all_comments:
-            query += ' LIMIT 3'
-
-        cursor.execute(query, (post['id'],))
-        comments = list(cursor)
-        for comment in comments:
-            cursor.execute("SELECT * FROM `users` WHERE `id` = %s", (comment['user_id'],))
-            comment['user'] = cursor.fetchone()
-        comments.reverse()
-        post['comments'] = comments
-
+        # N+1
         cursor.execute("SELECT * FROM `users` WHERE `id` = %s", (post['user_id'],))
         post['user'] = cursor.fetchone()
 
@@ -175,6 +185,7 @@ def make_posts(results, all_comments=False):
 
         if len(posts) >= POSTS_PER_PAGE:
             break
+
     return posts
 
 
