@@ -6,18 +6,21 @@ import subprocess
 import tempfile
 
 import flask
-import jinja2
+# import jinja2
+# http://flask.pocoo.org/snippets/28/
+from jinja2 import evalcontextfilter, Markup, escape
 import MySQLdb.cursors
 from pymemcache.client.base import Client as MemcacheClient
 
 import pymc_session
 
 
-UPLOAD_LIMIT = 10 * 1024 * 1024 # 10mb
+UPLOAD_LIMIT = 10 * 1024 * 1024  # 10mb
 POSTS_PER_PAGE = 20
 
 
 _config = None
+
 
 def config():
     global _config
@@ -37,6 +40,7 @@ def config():
 
 
 _db = None
+
 
 def db():
     global _db
@@ -63,6 +67,7 @@ def db_initialize():
 
 
 _mcclient = None
+
 
 def memcache():
     global _mcclient
@@ -121,7 +126,7 @@ def make_posts(results, all_comments=False):
         cursor.execute("SELECT COUNT(*) AS `count` FROM `comments` WHERE `post_id` = %s",
                        (post['id'],))
         post['comment_count'] = cursor.fetchone()['count']
-    
+
         query = 'SELECT * FROM `comments` WHERE `post_id` = %s ORDER BY `created_at` DESC'
         if not all_comments:
             query += ' LIMIT 3'
@@ -149,8 +154,10 @@ def make_posts(results, all_comments=False):
 
 static_path = pathlib.Path(__file__).resolve().parent.parent / 'public'
 app = flask.Flask(__name__, static_folder=str(static_path), static_url_path='')
-#app.debug = True
+# app.debug = True
+app.logger.setLevel(20)
 app.session_interface = pymc_session.SessionInterface(memcache())
+
 
 @app.template_global()
 def image_url(post):
@@ -165,32 +172,34 @@ def image_url(post):
 
     return "/image/%s%s" % (post['id'], ext)
 
-# http://flask.pocoo.org/snippets/28/
-from jinja2 import evalcontextfilter, Markup, escape
 
 _paragraph_re = re.compile(r'(?:\r\n|\r|\n){2,}')
+
 
 @app.template_filter()
 @evalcontextfilter
 def nl2br(eval_ctx, value):
-    result = u'\n\n'.join(u'<p>%s</p>' % p.replace('\n', '<br>\n') \
-        for p in _paragraph_re.split(escape(value)))
+    result = u'\n\n'.join(u'<p>%s</p>' % p.replace('\n', '<br>\n')
+                          for p in _paragraph_re.split(escape(value)))
     if eval_ctx.autoescape:
         result = Markup(result)
     return result
 
 # endpoints
 
+
 @app.route('/initialize')
 def get_initialize():
     db_initialize()
     return ''
+
 
 @app.route('/login')
 def get_login():
     if get_session_user():
         return flask.redirect('/')
     return flask.render_template("login.html", me=None)
+
 
 @app.route('/login', methods=['POST'])
 def post_login():
@@ -206,11 +215,13 @@ def post_login():
     flask.flash("アカウント名かパスワードが間違っています")
     return flask.redirect('/login')
 
+
 @app.route('/register')
 def get_register():
     if get_session_user():
         return flask.redirect('/')
     return flask.render_template("register.html", me=None)
+
 
 @app.route('/register', methods=['POST'])
 def post_register():
@@ -237,10 +248,12 @@ def post_register():
     flask.session['csrf_token'] = os.urandom(8).hex()
     return flask.redirect('/')
 
+
 @app.route('/logout')
 def get_logout():
     flask.session.clear()
     return flask.redirect('/')
+
 
 @app.route('/')
 def get_index():
@@ -252,6 +265,7 @@ def get_index():
 
     return flask.render_template("index.html", posts=posts, me=me)
 
+
 @app.route('/@<account_name>')
 def get_user_list(account_name):
     cursor = db().cursor()
@@ -262,7 +276,8 @@ def get_user_list(account_name):
     if not user:
         flask.abort(404)  # raises exception
 
-    cursor.execute("SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `user_id` = %s ORDER BY `created_at` DESC",
+    cursor.execute("SELECT `id`, `user_id`, `body`, `mime`, `created_at`"
+                   " FROM `posts` WHERE `user_id` = %s ORDER BY `created_at` DESC",
                    (user['id'],))
     posts = make_posts(cursor.fetchall())
 
@@ -284,6 +299,7 @@ def get_user_list(account_name):
                                  posts=posts, user=user, post_count=post_count,
                                  comment_count=comment_count, me=me)
 
+
 def _parse_iso8601(s):
     # http://bugs.python.org/issue15873
     # Ignore timezone
@@ -292,15 +308,20 @@ def _parse_iso8601(s):
         raise ValueError("Invlaid iso8601 format: %r" % (s,))
     return datetime.datetime(*map(int, m.groups()))
 
+
 @app.route('/posts')
 def get_posts():
     cursor = db().cursor()
     max_created_at = flask.request.args['max_created_at'] or None
     if max_created_at:
         max_created_at = _parse_iso8601(max_created_at)
-        cursor.execute('SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE `created_at` <= %s ORDER BY `created_at` DESC', (max_created_at,))
+        cursor.execute('SELECT `id`, `user_id`, `body`, `mime`, `created_at`'
+                       ' FROM `posts` WHERE `created_at` <= %s ORDER BY `created_at` DESC',
+                       (max_created_at,))
     else:
-        cursor.execute('SELECT `id`, `user_id`, `body`, `mime`, `created_at` FROM `posts` WHERE ORDER BY `created_at` DESC')
+        cursor.execute('SELECT `id`, `user_id`, `body`, `mime`, `created_at`'
+                       ' FROM `posts` WHERE ORDER BY `created_at` DESC')
+
     results = cursor.fetchall()
     posts = make_posts(results)
     return flask.render_template("posts.html", posts=posts)
@@ -317,6 +338,7 @@ def get_posts_id(id):
 
     me = get_session_user()
     return flask.render_template("post.html", post=posts[0], me=me)
+
 
 @app.route('/', methods=['POST'])
 def post_index():
@@ -355,6 +377,7 @@ def post_index():
     pid = cursor.lastrowid
     return flask.redirect("/posts/%d" % pid)
 
+
 @app.route('/image/<id>.<ext>')
 def get_image(id, ext):
     if not id:
@@ -374,6 +397,7 @@ def get_image(id, ext):
         return flask.Response(post['imgdata'], mimetype=mime)
 
     flask.abort(404)
+
 
 @app.route('/comment', methods=['POST'])
 def post_comment():
@@ -395,6 +419,7 @@ def post_comment():
 
     return flask.redirect("/posts/%d" % post_id)
 
+
 @app.route('/admin/banned')
 def get_banned():
     me = get_session_user()
@@ -409,6 +434,7 @@ def get_banned():
     users = cursor.fetchall()
 
     flask.render_template("banned.html", users=users, me=me)
+
 
 @app.route('/admin/banned', methods=['POST'])
 def post_banned():
